@@ -66,70 +66,21 @@ def main(project_name='models1000', model_name='demand_forecaster', feature_grou
     except Exception as e:
         print(f"⚠️ Could not retrieve metadata from feature store: {str(e)}")
     
-    # Approach 2: If feature store approach failed or if we need to find models,
-    # look directly in the model registry
-    if not available_items or not available_locations or item_id is not None or location_id is not None:
-        print("Checking available models in model registry...")
-        try:
-            # Use wildcard with the model name pattern
-            model_name_pattern = f"{model_name}_item*"
-            print(f"Searching for models matching pattern: {model_name_pattern}")
-            
-            # Get all models matching the pattern
-            all_models = mr.get_models()
-            matching_models = [m for m in all_models if m.name.startswith(f"{model_name}_item")]
-            
-            print(f"Found {len(matching_models)} models matching the pattern")
-            
-            # Extract item and location IDs from model names
-            for model in matching_models:
-                print(f"Found model: {model.name}")
-                # Extract item ID from model name (format: "model_name_itemXXXX_locYY")
-                model_name_parts = model.name.split('_')
-                if len(model_name_parts) >= 3:
-                    item_part = model_name_parts[2]
-                    if item_part.startswith('item'):
-                        try:
-                            extracted_item = int(item_part[4:])
-                            if extracted_item not in available_items:
-                                available_items.append(extracted_item)
-                                print(f"  Added item: {extracted_item}")
-                        except:
-                            pass
-                
-                # Extract location ID if present
-                if len(model_name_parts) >= 4:
-                    loc_part = model_name_parts[3]
-                    if loc_part.startswith('loc'):
-                        try:
-                            extracted_loc = int(loc_part[3:])
-                            if extracted_loc not in available_locations:
-                                available_locations.append(extracted_loc)
-                                print(f"  Added location: {extracted_loc}")
-                        except:
-                            pass
-            
-            print(f"Found {len(available_items)} items and {len(available_locations)} locations from model registry")
-            
-            # If we specified an item_id, and it wasn't found, add it anyway
-            if item_id is not None and item_id not in available_items:
-                available_items.append(item_id)
-                print(f"Added requested item {item_id} to available items")
-                
-            # If we specified a location_id, and it wasn't found, add it anyway  
-            if location_id is not None and location_id not in available_locations:
-                available_locations.append(location_id)
-                print(f"Added requested location {location_id} to available locations")
-                
-        except Exception as e:
-            print(f"⚠️ Could not retrieve models from model registry: {str(e)}")
-            # If we have specific item/location, add them even if search failed
-            if item_id is not None:
-                available_items.append(item_id)
-                print(f"Added requested item {item_id} to available items")
-            if location_id is not None:
-                available_locations.append(location_id)
-                print(f"Added requested location {location_id} to available locations")
+    # Just use the provided item_id and location_id directly
+    # If not provided, use hard-coded values from our sample data
+    if item_id is not None:
+        available_items = [item_id]
+    else:
+        # Default item IDs from our sample data
+        available_items = [9684698, 8204334]
+        
+    if location_id is not None:
+        available_locations = [location_id]
+    else:
+        # Default location IDs from our sample data
+        available_locations = [3]
+        
+    print(f"Using items: {available_items} and locations: {available_locations}")
     
     # Validate provided item_id and location_id if specified
     if item_id and available_items and item_id not in available_items:
@@ -154,15 +105,6 @@ def main(project_name='models1000', model_name='demand_forecaster', feature_grou
     forecast_data = []
     model_metrics = {}
     
-    # Get all models from the registry once for efficient lookup
-    try:
-        print("Getting all models from registry...")
-        all_models = mr.get_models()
-        print(f"Found {len(all_models)} total models in registry")
-    except Exception as e:
-        print(f"Failed to get models from registry: {str(e)}")
-        all_models = []
-    
     print(f"🔮 Generating forecasts for {len(items_to_forecast)} items and {len(locations_to_forecast)} locations")
     
     # Create output directories
@@ -176,27 +118,14 @@ def main(project_name='models1000', model_name='demand_forecaster', feature_grou
             try:
                 model_prefix = f"{model_name}_item{item}_loc{loc}"
                 print(f"Looking for model with prefix: {model_prefix}")
-                
-                # First try: get all models with this prefix
-                all_matching_models = [m for m in all_models if m.name == model_prefix]
-                if all_matching_models:
-                    # If we have matching models, get the latest version
-                    model_instance = all_matching_models[-1]  # Latest version
-                    print(f"Found model for item {item} location {loc} (version {model_instance.version})")
+                # Just use direct model retrieval by name with version=1
+                try:
+                    model_instance = mr.get_model(name=model_prefix, version=1)
+                    print(f"Found model for item {item} location {loc}")
                     model_type = "location_specific"
-                else:
-                    # Try getting it directly from the registry
-                    try:
-                        models = mr.get_models(name=model_prefix)
-                        if models and len(models) > 0:
-                            model_instance = models[-1]  # Latest version
-                            print(f"Found model for item {item} location {loc} (version {model_instance.version})")
-                            model_type = "location_specific"
-                        else:
-                            raise Exception(f"No models found with prefix {model_prefix}")
-                    except Exception as e:
-                        print(f"Error finding model with prefix {model_prefix}: {str(e)}")
-                        raise
+                except Exception as e:
+                    print(f"Cannot get model: {str(e)}")
+                    raise
             except Exception as loc_error:
                 print(f"Could not find item-location specific model: {str(loc_error)}")
                 
@@ -204,27 +133,14 @@ def main(project_name='models1000', model_name='demand_forecaster', feature_grou
                 try:
                     model_prefix = f"{model_name}_item{item}"
                     print(f"Looking for model with prefix: {model_prefix}")
-                    
-                    # First try: get all models with this prefix
-                    all_matching_models = [m for m in all_models if m.name == model_prefix]
-                    if all_matching_models:
-                        # If we have matching models, get the latest version
-                        model_instance = all_matching_models[-1]  # Latest version
-                        print(f"Found item-only model for item {item} (version {model_instance.version})")
+                    # Just use direct model retrieval by name with version=1
+                    try:
+                        model_instance = mr.get_model(name=model_prefix, version=1)
+                        print(f"Found item-only model for item {item}")
                         model_type = "item_specific"
-                    else:
-                        # Try getting it directly from the registry
-                        try:
-                            models = mr.get_models(name=model_prefix)
-                            if models and len(models) > 0:
-                                model_instance = models[-1]  # Latest version
-                                print(f"Found item-only model for item {item} (version {model_instance.version})")
-                                model_type = "item_specific"
-                            else:
-                                raise Exception(f"No models found with prefix {model_prefix}")
-                        except Exception as e:
-                            print(f"Error finding model with prefix {model_prefix}: {str(e)}")
-                            raise
+                    except Exception as e:
+                        print(f"Cannot get model: {str(e)}")
+                        raise
                 except Exception as item_error:
                     print(f"⚠️ No model found for item {item}: {str(item_error)}")
                     continue
