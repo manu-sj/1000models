@@ -66,16 +66,18 @@ python training_pipeline.py --location 3
 python inference_pipeline.py --item 9684698
 ```
 
-## Inference Examples
+## Inference Pipeline
 
-Run batch inference with various configurations:
+The system uses a sophisticated batch inference approach that leverages Hopsworks feature views to ensure consistent transformations between training and prediction.
+
+### Running Batch Inference
 
 ```bash
-# Basic inference for all items and locations with default settings (12 months starting from 2021-01)
-python inference_pipeline.py
-
-# Generate forecasts for a specific item-location combination
+# Basic inference for a specific item and location 
 python inference_pipeline.py --item 9684698 --location 3
+
+# Generate forecasts for all items and locations
+python inference_pipeline.py
 
 # Forecast 6 months starting from July 2023
 python inference_pipeline.py --start-year 2023 --start-month 7 --periods 6
@@ -85,7 +87,23 @@ python inference_pipeline.py --item 8204334 --start-year 2024 --start-month 1 --
 
 # Generate forecasts for all items in location 3 for Q1 2023
 python inference_pipeline.py --location 3 --start-year 2023 --start-month 1 --periods 3
+
+# Use a different feature group (if you've created a custom one)
+python inference_pipeline.py --feature-group custom_demand_features
 ```
+
+### Advanced Features
+
+1. **Feature Transformations**: The pipeline automatically applies the same transformations used during training through the feature view, ensuring model input consistency.
+
+2. **Best Model Selection**: For each item-location, the system:
+   - Retrieves the model with the lowest RMSE 
+   - Falls back to the latest version if best model can't be determined
+   - Shows which model version is being used in logs
+
+3. **Robust Fallbacks**: If feature view transformations encounter issues, the system uses a seasonal pattern approach as a fallback, ensuring predictions are always generated.
+
+### Inference Outputs
 
 The inference pipeline generates several outputs:
 
@@ -100,6 +118,10 @@ The inference pipeline generates several outputs:
 3. **Feature Store** (optional):
    - Forecasts are uploaded to a feature group named "demand_forecast"
    - Can be used for downstream applications or dashboards
+
+### Technical Details
+
+The inference uses `feature_view.get_batch_data(transformed=True, write=False)` to apply the same transformations used during training, ensuring feature name consistency without writing to the feature store.
 
 ## Performance at Scale
 
