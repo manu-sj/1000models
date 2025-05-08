@@ -65,31 +65,82 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     # Identify categorical columns - assume string/object types are categorical
     cat_cols = sample_data.select_dtypes(include=['object']).columns.tolist()
     
-    # Define transformations - standard scaling for numeric features
+    print("🤖 Setting up transformation functions")
+    # Import the built-in transformations directly from hopsworks module 
+    # This is the preferred method according to documentation
+    from hopsworks.hsfs.builtin_transformations import standard_scaler, min_max_scaler, label_encoder
+        
+    # Define transformations for different column types
     transformation_functions = []
-    numeric_cols = [col for col in sample_data.columns if col not in cat_cols + ['datetime', 'repetitive_demand_quantity']]
-    for col in numeric_cols:
-        transformation_functions.append(standard_scaler(col))
+    
+    # Get numeric columns that need scaling
+    # Explicitly identify numeric columns for clarity
+    numeric_cols = [col for col in sample_data.columns 
+                  if col not in cat_cols + ['datetime', 'repetitive_demand_quantity']
+                  and sample_data[col].dtype in [float, int, 'float64', 'int64', 'float32', 'int32']]
+    
+    print(f"Identified {len(numeric_cols)} numeric columns for transformation")
+    
+    # Apply standard_scaler to each numeric column if any exist
+    if numeric_cols:
+        for col in numeric_cols:
+            # Apply the transformation function to specific column
+            transformation_functions.append(standard_scaler(col))
+        
+    # Apply label_encoder to categorical columns (excluding datetime, sp_id, and loc_id)
+    # sp_id and loc_id are primary keys and shouldn't be transformed
+    categorical_for_encoding = [col for col in cat_cols 
+                              if col not in ['datetime', 'sp_id', 'loc_id']]
+    
+    if categorical_for_encoding:
+        print(f"Applying label encoding to {len(categorical_for_encoding)} categorical columns")
+        for col in categorical_for_encoding:
+            transformation_functions.append(label_encoder(col))
+    else:
+        print("No categorical columns to encode")
+    
+    print(f"Set up transformations for {len(transformation_functions)} columns total")
         
     print("⚙️ Creating Feature View")
-    # Get feature view or create one with transformations
+    
+    # Try to get or create feature view using get_or_create_feature_view
     try:
-        feature_view = fs.get_feature_view(name=f"{feature_group_name}_view", version=version)
-        print(f"Found existing feature view: {feature_group_name}_view")
+        print(f"Getting or creating feature view: {feature_group_name}_view")
+        
+        # Log which transformations will be applied
+        transformation_info = []
+        for tf in transformation_functions:
+            # Get the function name and parameter
+            func_str = str(tf)
+            transformation_info.append(func_str)
+        
+        print(f"Will apply the following transformations:")
+        for i, tf_info in enumerate(transformation_info):
+            print(f"  {i+1}. {tf_info}")
+        
+        # Use get_or_create_feature_view method which handles both cases properly
+        feature_view = fs.get_or_create_feature_view(
+            name=f"{feature_group_name}_view",
+            version=version,
+            description="Feature view for demand forecasting",
+            labels=["repetitive_demand_quantity"],
+            transformation_functions=transformation_functions,
+            query=query
+        )
+        print(f"Successfully got or created feature view: {feature_group_name}_view")
+    
     except Exception as e:
-        print(f"Creating new feature view: {feature_group_name}_view")
+        print(f"Error with feature view: {str(e)}")
+        print(f"Detailed error: {type(e).__name__}: {str(e)}")
+        
+        # Try to get the view directly as a fallback
         try:
-            feature_view = fs.create_feature_view(
-                name=f"{feature_group_name}_view",
-                version=version,
-                description="Feature view for demand forecasting",
-                labels=["repetitive_demand_quantity"],
-                transformation_functions=transformation_functions,
-                query=query
-            )
-        except Exception as create_error:
-            print(f"Error creating feature view: {str(create_error)}")
-            raise
+            print(f"Attempting to get existing feature view as fallback...")
+            feature_view = fs.get_feature_view(name=f"{feature_group_name}_view", version=version)
+            print(f"Retrieved existing feature view in fallback")
+        except Exception as get_error:
+            print(f"Fallback also failed: {str(get_error)}")
+            raise ValueError(f"Failed to get or create feature view: {str(e)}")
     
     # Verify feature view exists
     if feature_view is None:
@@ -97,20 +148,65 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     
     print("🏋️ Creating Training Dataset")
     try:
-        # First try to create a training dataset
+        # Create a training dataset with transformations
+        print("Creating training dataset with transformations...")
         td = feature_view.create_training_data(
             description="Training data for demand forecasting",
             data_format="csv"
         )
         print(f"Created training dataset with version: {td.version}")
         
-        # Use train_test_split from feature view for proper splitting
-        X_train, X_test, y_train, y_test = feature_view.train_test_split(test_size=test_size)
+        # Now get the training data with transformations applied
+        print("Getting training data with transformations applied...")
+        
+        # Try the simplified train_test_split approach from examples
+        try:
+            print("Using feature view train_test_split method...")
+            X_train, X_test, y_train, y_test = feature_view.train_test_split(
+                test_size=test_size
+            )
+            print(f"Successfully split data using feature view: train={X_train.shape}, test={X_test.shape}")
+        except Exception as split_error:
+            print(f"Error using simplified train_test_split: {str(split_error)}")
+            
+            # Try the version with training_dataset_version specified
+            try:
+                print("Trying train_test_split with training_dataset_version...")
+                X_train, X_test, y_train, y_test = feature_view.train_test_split(
+                    training_dataset_version=td.version,
+                    test_size=test_size
+                )
+                print(f"Successfully split data using training_dataset_version: train={X_train.shape}, test={X_test.shape}")
+            except Exception as version_split_error:
+                print(f"Error using train_test_split with version: {str(version_split_error)}")
+                
+                # Fallback: Get full training data and split manually
+                print("Falling back to get_training_data and manual split...")
+                td_data = feature_view.get_training_data(training_dataset_version=td.version)[0]
+                print(f"Retrieved training data with shape: {td_data.shape}")
+                
+                # Look at the column names including transformed columns
+                print(f"Training data contains {len(td_data.columns)} columns:")
+                print(f"First 5 columns: {list(td_data.columns)[:5]}")
+                print(f"Last 5 columns: {list(td_data.columns)[-5:]}")
+                
+                # Separate features and target (label)
+                X = td_data.drop('repetitive_demand_quantity', axis=1)
+                y = td_data['repetitive_demand_quantity']
+                
+                # Split using sklearn
+                from sklearn.model_selection import train_test_split as sk_train_test_split
+                X_train, X_test, y_train, y_test = sk_train_test_split(X, y, test_size=test_size, random_state=42)
+                print(f"Manually split data: train={X_train.shape}, test={X_test.shape}")
+        
     except Exception as e:
-        print(f"Error creating training dataset: {str(e)}")
-        # Fallback to manual data retrieval
-        print("Falling back to manual data retrieval...")
+        print(f"Error creating or using training dataset: {str(e)}")
+        print(f"Detailed error: {type(e).__name__}: {str(e)}")
+        
+        # Final fallback: Read directly from query and split manually
+        print("Falling back to direct query data retrieval (without transformations)...")
         data = query.read()
+        print(f"Retrieved data directly from query with shape: {data.shape}")
         
         # Split data manually
         from sklearn.model_selection import train_test_split as sk_train_test_split
@@ -121,6 +217,8 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
         
         # Split data
         X_train, X_test, y_train, y_test = sk_train_test_split(X, y, test_size=test_size, random_state=42)
+        print(f"Split data into train set: {X_train.shape} and test set: {X_test.shape}")
+        print("WARNING: Using data without transformations!")
     
     # Get unique items and locations
     items = X_train['sp_id'].unique()
