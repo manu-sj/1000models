@@ -322,7 +322,7 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
                 model_api = mr.python.create_model(
                     name=model_prefix,
                     metrics=best_metrics,
-                    # Omit version to use automatic incremental versioning
+                    # Omit version to let Hopsworks handle versioning automatically
                     description=f"Demand forecasting model for item {item}, location {loc} using {best_model_type} - {datetime.now().strftime('%Y-%m-%d')}",
                     input_example=X_train_item.iloc[0].to_dict(),
                     feature_view=feature_view
