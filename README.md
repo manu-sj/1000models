@@ -1,79 +1,70 @@
-# 1000models - Demand Forecasting Project
+# 1000models - Extreme Model Parameterization Demo
 
-A scalable demand forecasting system using Hopsworks feature store that can create and manage hundreds of models.
+A demonstration of how to train, manage, and serve thousands of specialized ML models from a single codebase.
 
-## Project Structure
+## Extreme Parameterization
 
-This project consists of three main pipelines:
+This project showcases how to:
 
-1. **Feature Pipeline**: Processes raw demand data and uploads it to the Hopsworks feature store
-2. **Training Pipeline**: Trains individual forecasting models for each item/location combination
-3. **Inference Pipeline**: Generates forecasts using the trained models and uploads them to the feature store
+- **Train thousands of models** with a single command
+- Create a **separate model for each item×location combination**
+- Automatically **select the best algorithm** for each combination
+- **Scale effortlessly** from hundreds to thousands of models
+- Maintain a **single entry point** while handling massive complexity underneath
 
-## Prerequisites
-
-- Python 3.8+
-- Hopsworks account and API key
-
-## Installation
+## Quick Start
 
 ```bash
+# Install dependencies
 pip install -r requirements.txt
+
+# Process demand data and upload to feature store
+python feature_pipeline.py
+
+# Train 1000+ individual models (one per item-location)
+python training_pipeline.py
+
+# Generate forecasts using all trained models
+python inference_pipeline.py
 ```
 
-## Configuration
+## How It Works
 
-Create a `.env` file in the root directory with your Hopsworks credentials:
+The system operates through three streamlined pipelines:
 
-```
-HOST=demo.hops.works
-PORT=443
-PROJECT=models1000
-HOPSWORKS_API_KEY=your_api_key_here
-```
+1. **Feature Pipeline**: Processes data once and stores it centrally
+2. **Training Pipeline**: Automatically:
+   - Identifies all unique item×location combinations
+   - Trains separate RF and XGBoost models for each
+   - Selects the better model based on performance
+   - Handles insufficient data gracefully
+   - Generates a comprehensive model performance report
+3. **Inference Pipeline**: Uses the best model for each combination to generate forecasts
 
-## Usage
+## Configuring Scale
 
-### Feature Pipeline
-
-The feature pipeline loads the demand data and uploads it to the Hopsworks feature store.
+Control the scale with simple parameters:
 
 ```bash
-python feature_pipeline.py [--project PROJECT_NAME] [--feature-group FEATURE_GROUP_NAME] [--version VERSION]
+# Train models for all items in a specific location
+python training_pipeline.py --location 3
+
+# Generate forecasts for a specific item across all locations
+python inference_pipeline.py --item 9684698
 ```
 
-### Training Pipeline
+## Performance at Scale
 
-The training pipeline creates and trains demand forecasting models for each item/location combination, comparing RandomForest and XGBoost models and selecting the best one.
+The solution automatically:
+- Parallelizes where possible
+- Tracks performance across the entire model fleet
+- Maintains summary statistics for all models
+- Generates visualizations to understand model behavior
 
-```bash
-python training_pipeline.py [--project PROJECT_NAME] [--feature-group FEATURE_GROUP_NAME] [--version VERSION] [--model-name MODEL_NAME] [--model-version MODEL_VERSION] [--test-size TEST_SIZE] [--location LOCATION_ID]
-```
+## Production Readiness
 
-### Inference Pipeline
-
-The inference pipeline generates forecasts using the trained models and visualizes the results.
-
-```bash
-python inference_pipeline.py [--project PROJECT_NAME] [--model-name MODEL_NAME] [--item ITEM_ID] [--location LOCATION_ID] [--start-year START_YEAR] [--start-month START_MONTH] [--periods PERIODS]
-```
-
-## Hopsworks Integration
-
-This project uses Hopsworks for:
+Built on enterprise-grade Hopsworks for:
 - Feature storage and versioning
-- Feature transformations
-- Feature views for model training
-- Model registry for tracking models
-- Online serving of models
-
-## Best Practices
-
-The pipelines follow these best practices:
-- Proper feature engineering and selection
-- Data transformation (scaling, encoding)
-- Model comparison and selection
-- Visualization of results
-- Comprehensive logging
-- Parameterized execution
-- Version control of features and models
+- Model registry and governance
+- Online model serving
+- Monitoring and tracking
