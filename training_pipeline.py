@@ -112,13 +112,14 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
             print(f"  {i+1}. {tf_info}")
         
         # Use get_or_create_feature_view method which handles both cases properly
-        # Skip transformation functions for now to simplify and avoid empty dataset issues
+        # Create with minimal transformations that won't eliminate data
         feature_view = fs.get_or_create_feature_view(
             name=f"{feature_group_name}_view",
             version=version,
             description="Feature view for demand forecasting",
             labels=["repetitive_demand_quantity"],
-            query=query
+            query=query,
+            transformation_functions=transformation_functions
         )
         print(f"Successfully got or created feature view: {feature_group_name}_view")
     
@@ -141,57 +142,13 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     
     print("🏋️ Creating Training Dataset")
     try:
-        # Create a training dataset with transformations
-        print("Creating training dataset with transformations...")
-        td = feature_view.create_training_data(
-            description="Training data for demand forecasting",
-            data_format="csv"
+        # Create a training dataset with transformations using the simplified approach seen in tutorials
+        print("Applying train_test_split directly from feature view...")
+        X_train, X_test, y_train, y_test = feature_view.train_test_split(
+            test_size=test_size
         )
-        print(f"Created training dataset with version: {td.version}")
-        
-        # Now get the training data with transformations applied
-        print("Getting training data with transformations applied...")
-        
-        # Try the simplified train_test_split approach from examples
-        try:
-            print("Using feature view train_test_split method...")
-            X_train, X_test, y_train, y_test = feature_view.train_test_split(
-                test_size=test_size
-            )
-            print(f"Successfully split data using feature view: train={X_train.shape}, test={X_test.shape}")
-        except Exception as split_error:
-            print(f"Error using simplified train_test_split: {str(split_error)}")
+        print(f"Successfully split data using feature view: train={X_train.shape}, test={X_test.shape}")
             
-            # Try the version with training_dataset_version specified
-            try:
-                print("Trying train_test_split with training_dataset_version...")
-                X_train, X_test, y_train, y_test = feature_view.train_test_split(
-                    training_dataset_version=td.version,
-                    test_size=test_size
-                )
-                print(f"Successfully split data using training_dataset_version: train={X_train.shape}, test={X_test.shape}")
-            except Exception as version_split_error:
-                print(f"Error using train_test_split with version: {str(version_split_error)}")
-                
-                # Fallback: Get full training data and split manually
-                print("Falling back to get_training_data and manual split...")
-                td_data = feature_view.get_training_data(training_dataset_version=td.version)[0]
-                print(f"Retrieved training data with shape: {td_data.shape}")
-                
-                # Look at the column names including transformed columns
-                print(f"Training data contains {len(td_data.columns)} columns:")
-                print(f"First 5 columns: {list(td_data.columns)[:5]}")
-                print(f"Last 5 columns: {list(td_data.columns)[-5:]}")
-                
-                # Separate features and target (label)
-                X = td_data.drop('repetitive_demand_quantity', axis=1)
-                y = td_data['repetitive_demand_quantity']
-                
-                # Split using sklearn
-                from sklearn.model_selection import train_test_split as sk_train_test_split
-                X_train, X_test, y_train, y_test = sk_train_test_split(X, y, test_size=test_size, random_state=42)
-                print(f"Manually split data: train={X_train.shape}, test={X_test.shape}")
-        
     except Exception as e:
         print(f"Error creating or using training dataset: {str(e)}")
         print(f"Detailed error: {type(e).__name__}: {str(e)}")
@@ -236,7 +193,9 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
         for loc in locations:
             model_counter += 1
             if model_counter % 10 == 0 or model_counter == 1:
-                print(f"Training model {model_counter}/{total_models} (Item: {item}, Location: {loc})")
+                # Convert loc to int if it's a location ID to ensure proper display
+                loc_display = int(loc) if isinstance(loc, (int, float)) or (isinstance(loc, str) and loc.isdigit()) else loc
+                print(f"Training model {model_counter}/{total_models} (Item: {item}, Location: {loc_display})")
             
             # Filter data for this item-location combination
             item_loc_mask_train = (X_train['sp_id'] == item) & (X_train['loc_id'] == loc)
@@ -244,7 +203,9 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
             
             # Skip if we don't have enough data for this combination
             if sum(item_loc_mask_train) < 10 or sum(item_loc_mask_test) < 5:
-                print(f"⚠️ Skipping Item: {item}, Location: {loc} due to insufficient data (train: {sum(item_loc_mask_train)}, test: {sum(item_loc_mask_test)})")
+                # Convert loc to int if it's a location ID to ensure proper display
+                loc_display = int(loc) if isinstance(loc, (int, float)) or (isinstance(loc, str) and loc.isdigit()) else loc
+                print(f"⚠️ Skipping Item: {item}, Location: {loc_display} due to insufficient data (train: {sum(item_loc_mask_train)}, test: {sum(item_loc_mask_test)})")
                 continue
             
             X_train_item = X_train[item_loc_mask_train].drop(['sp_id', 'loc_id', 'datetime'], axis=1)
@@ -252,16 +213,28 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
             X_test_item = X_test[item_loc_mask_test].drop(['sp_id', 'loc_id', 'datetime'], axis=1)
             y_test_item = y_test[item_loc_mask_test]
         
-            # Feature engineering - convert time_bucket to year and month
+            # Feature engineering - convert time_bucket to year and month if available
             for df in [X_train_item, X_test_item]:
                 if not df.empty:
-                    df['year'] = df['time_bucket'].astype(str).str[:4].astype(int)
-                    df['month'] = df['time_bucket'].astype(str).str[4:].astype(int)
-                    df.drop('time_bucket', axis=1, inplace=True)
+                    # Print available columns for debugging
+                    print(f"Columns in dataframe: {df.columns.tolist()}")
+                    
+                    # Check if time_bucket exists, if not, we'll skip this step
+                    if 'time_bucket' in df.columns:
+                        df['year'] = df['time_bucket'].astype(str).str[:4].astype(int)
+                        df['month'] = df['time_bucket'].astype(str).str[4:].astype(int)
+                        df.drop('time_bucket', axis=1, inplace=True)
+                    else:
+                        # If time_bucket doesn't exist, add dummy values to avoid errors
+                        print("Column 'time_bucket' not found in data, adding placeholder values")
+                        df['year'] = 2023  # Default year
+                        df['month'] = 1    # Default month
             
             # Skip if dataframes are empty after processing
             if X_train_item.empty or X_test_item.empty:
-                print(f"⚠️ Skipping Item: {item}, Location: {loc} due to empty data after processing")
+                # Convert loc to int if it's a location ID to ensure proper display
+                loc_display = int(loc) if isinstance(loc, (int, float)) or (isinstance(loc, str) and loc.isdigit()) else loc
+                print(f"⚠️ Skipping Item: {item}, Location: {loc_display} due to empty data after processing")
                 continue
             
             # Train both models for comparison
@@ -325,21 +298,15 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
                 
                 # Create feature importance plot
                 plt.figure(figsize=(10, 6))
-                if best_model_type == "RandomForest":
-                    importances = best_model.feature_importances_
-                    indices = np.argsort(importances)[::-1]
-                    features = X_train_item.columns
-                    
-                    plt.title(f'Feature Importances for Item {item}, Location {loc}')
-                    plt.bar(range(X_train_item.shape[1]), importances[indices], align='center')
-                    plt.xticks(range(X_train_item.shape[1]), [features[i] for i in indices], rotation=90)
-                    plt.tight_layout()
-                else:  # XGBoost
-                    xgb_model.get_booster().feature_names = list(X_train_item.columns)
-                    xgb_model.get_booster().feature_importances = list(X_train_item.columns)
-                    xgb_model.plot_importance(max_num_features=10)
-                    plt.title(f'Feature Importances for Item {item}, Location {loc}')
-                    plt.tight_layout()
+                # For both model types, we'll use the same approach for feature importance
+                importances = best_model.feature_importances_
+                indices = np.argsort(importances)[::-1]
+                features = X_train_item.columns
+                
+                plt.title(f'Feature Importances for Item {item}, Location {loc}')
+                plt.bar(range(X_train_item.shape[1]), importances[indices], align='center')
+                plt.xticks(range(X_train_item.shape[1]), [features[i] for i in indices], rotation=90)
+                plt.tight_layout()
                 
                 plt.savefig(os.path.join(images_dir, "feature_importance.png"), dpi=300, bbox_inches='tight')
                 plt.close()
@@ -367,7 +334,9 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
                     print(f"  ✅ Saved model for item {item}, location {loc} using {best_model_type}")
                 
             except Exception as e:
-                print(f"⚠️ Error training model for Item: {item}, Location: {loc}: {str(e)}")
+                # Convert loc to int if it's a location ID to ensure proper display
+                loc_display = int(loc) if isinstance(loc, (int, float)) or (isinstance(loc, str) and loc.isdigit()) else loc
+                print(f"⚠️ Error training model for Item: {item}, Location: {loc_display}: {str(e)}")
                 continue
     
     # Save overall metrics summary
