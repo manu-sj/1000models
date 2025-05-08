@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 import argparse
 import os
+import json
 import matplotlib.pyplot as plt
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
@@ -88,130 +89,201 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     # Use train_test_split from feature view for proper splitting
     X_train, X_test, y_train, y_test = feature_view.train_test_split(test_size=test_size)
     
-    # Get unique items
+    # Get unique items and locations
     items = X_train['sp_id'].unique()
+    locations = X_train['loc_id'].unique() if location_id is None else [location_id]
+    
+    # Calculate total number of models
+    total_models = len(items) * len(locations)
     
     # Get model registry
     mr = project.get_model_registry()
     
-    print(f"🧬 Training models for {len(items)} items")
+    print(f"🧬 Training {total_models} models (items: {len(items)} × locations: {len(locations)})")
     
-    for i, item in enumerate(items):
-        if i % 10 == 0:
-            print(f"Training model {i+1}/{len(items)}")
+    # Counter for progress tracking
+    model_counter = 0
+    
+    # Dictionary to store metrics for all models
+    all_model_metrics = {}
+    
+    # Loop through each item and location combination
+    for item in items:
+        for loc in locations:
+            model_counter += 1
+            if model_counter % 10 == 0 or model_counter == 1:
+                print(f"Training model {model_counter}/{total_models} (Item: {item}, Location: {loc})")
+            
+            # Filter data for this item-location combination
+            item_loc_mask_train = (X_train['sp_id'] == item) & (X_train['loc_id'] == loc)
+            item_loc_mask_test = (X_test['sp_id'] == item) & (X_test['loc_id'] == loc)
+            
+            # Skip if we don't have enough data for this combination
+            if sum(item_loc_mask_train) < 10 or sum(item_loc_mask_test) < 5:
+                print(f"⚠️ Skipping Item: {item}, Location: {loc} due to insufficient data")
+                continue
+            
+            X_train_item = X_train[item_loc_mask_train].drop(['sp_id', 'loc_id', 'datetime'], axis=1)
+            y_train_item = y_train[item_loc_mask_train]
+            X_test_item = X_test[item_loc_mask_test].drop(['sp_id', 'loc_id', 'datetime'], axis=1)
+            y_test_item = y_test[item_loc_mask_test]
         
-        # Filter data for this item
-        item_mask_train = X_train['sp_id'] == item
-        item_mask_test = X_test['sp_id'] == item
+            # Feature engineering - convert time_bucket to year and month
+            for df in [X_train_item, X_test_item]:
+                if not df.empty:
+                    df['year'] = df['time_bucket'].astype(str).str[:4].astype(int)
+                    df['month'] = df['time_bucket'].astype(str).str[4:].astype(int)
+                    df.drop('time_bucket', axis=1, inplace=True)
+            
+            # Skip if dataframes are empty after processing
+            if X_train_item.empty or X_test_item.empty:
+                print(f"⚠️ Skipping Item: {item}, Location: {loc} due to empty data after processing")
+                continue
+            
+            # Train both models for comparison
+            model_prefix = f"{model_name}_item{item}_loc{loc}"
+            
+            try:
+                # Train RandomForest
+                rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
+                rf_model.fit(X_train_item, y_train_item)
+                
+                # Train XGBoost
+                xgb_model = XGBRegressor(n_estimators=100, random_state=42)
+                xgb_model.fit(X_train_item, y_train_item)
+                
+                # Evaluate models
+                models = {
+                    "RandomForest": rf_model,
+                    "XGBoost": xgb_model
+                }
+                
+                best_model = None
+                best_rmse = float('inf')
+                best_metrics = {}
+                
+                for model_type, model in models.items():
+                    # Make predictions
+                    y_pred = model.predict(X_test_item)
+                    
+                    # Calculate metrics
+                    mae = mean_absolute_error(y_test_item, y_pred)
+                    rmse = mean_squared_error(y_test_item, y_pred, squared=False)
+                    r2 = r2_score(y_test_item, y_pred)
+                    
+                    metrics = {
+                        "mae": mae,
+                        "rmse": rmse,
+                        "r2": r2
+                    }
+                    
+                    if model_counter % 10 == 0 or model_counter == 1:
+                        print(f"  {model_type} Metrics - MAE: {mae:.2f}, RMSE: {rmse:.2f}, R²: {r2:.2f}")
+                    
+                    # Track best model
+                    if rmse < best_rmse:
+                        best_rmse = rmse
+                        best_model = model
+                        best_model_type = model_type
+                        best_metrics = metrics
+                
+                # Store metrics for this item-location combination
+                all_model_metrics[f"item_{item}_loc_{loc}"] = {
+                    "model_type": best_model_type,
+                    "metrics": best_metrics
+                }
         
-        X_train_item = X_train[item_mask_train].drop(['sp_id', 'loc_id', 'datetime'], axis=1)
-        y_train_item = y_train[item_mask_train]
-        X_test_item = X_test[item_mask_test].drop(['sp_id', 'loc_id', 'datetime'], axis=1)
-        y_test_item = y_test[item_mask_test]
-        
-        # Feature engineering - convert time_bucket to year and month
-        for df in [X_train_item, X_test_item]:
-            df['year'] = df['time_bucket'].astype(str).str[:4].astype(int)
-            df['month'] = df['time_bucket'].astype(str).str[4:].astype(int)
-            df.drop('time_bucket', axis=1, inplace=True)
-        
-        # Train both models for comparison
-        print(f"Training RandomForest and XGBoost models for item {item}")
-        
-        # Train RandomForest
-        rf_model = RandomForestRegressor(n_estimators=100, random_state=42)
-        rf_model.fit(X_train_item, y_train_item)
-        
-        # Train XGBoost
-        xgb_model = XGBRegressor(n_estimators=100, random_state=42)
-        xgb_model.fit(X_train_item, y_train_item)
-        
-        # Evaluate models
-        models = {
-            "RandomForest": rf_model,
-            "XGBoost": xgb_model
+                # Create model directory
+                model_dir = model_prefix
+                images_dir = os.path.join(model_dir, "images")
+                os.makedirs(images_dir, exist_ok=True)
+                
+                # Create feature importance plot
+                plt.figure(figsize=(10, 6))
+                if best_model_type == "RandomForest":
+                    importances = best_model.feature_importances_
+                    indices = np.argsort(importances)[::-1]
+                    features = X_train_item.columns
+                    
+                    plt.title(f'Feature Importances for Item {item}, Location {loc}')
+                    plt.bar(range(X_train_item.shape[1]), importances[indices], align='center')
+                    plt.xticks(range(X_train_item.shape[1]), [features[i] for i in indices], rotation=90)
+                    plt.tight_layout()
+                else:  # XGBoost
+                    xgb_model.get_booster().feature_names = list(X_train_item.columns)
+                    xgb_model.get_booster().feature_importances = list(X_train_item.columns)
+                    xgb_model.plot_importance(max_num_features=10)
+                    plt.title(f'Feature Importances for Item {item}, Location {loc}')
+                    plt.tight_layout()
+                
+                plt.savefig(os.path.join(images_dir, "feature_importance.png"), dpi=300, bbox_inches='tight')
+                plt.close()
+                
+                # Save model
+                if best_model_type == "RandomForest":
+                    joblib.dump(best_model, os.path.join(model_dir, "model.joblib"))
+                else:  # XGBoost
+                    best_model.save_model(os.path.join(model_dir, "model.json"))
+                
+                # Register model in Hopsworks
+                model_api = mr.python.create_model(
+                    name=model_prefix,
+                    metrics=best_metrics,
+                    version=model_version,
+                    description=f"Demand forecasting model for item {item}, location {loc} using {best_model_type}",
+                    input_example=X_train_item.iloc[0].to_dict(),
+                    feature_view=feature_view
+                )
+                
+                # Upload the model and artifacts
+                model_api.save(model_dir)
+                
+                if model_counter % 10 == 0 or model_counter == 1:
+                    print(f"  ✅ Saved model for item {item}, location {loc} using {best_model_type}")
+                
+            except Exception as e:
+                print(f"⚠️ Error training model for Item: {item}, Location: {loc}: {str(e)}")
+                continue
+    
+    # Save overall metrics summary
+    metrics_dir = "model_metrics"
+    os.makedirs(metrics_dir, exist_ok=True)
+    
+    # Save metrics to JSON
+    with open(os.path.join(metrics_dir, "all_model_metrics.json"), 'w') as f:
+        json.dump(all_model_metrics, f, indent=2)
+    
+    # Create summary statistics
+    model_types = [data["model_type"] for data in all_model_metrics.values()]
+    rf_count = model_types.count("RandomForest")
+    xgb_count = model_types.count("XGBoost")
+    
+    # Get mean metrics across all models
+    mae_values = [data["metrics"]["mae"] for data in all_model_metrics.values()]
+    rmse_values = [data["metrics"]["rmse"] for data in all_model_metrics.values()]
+    r2_values = [data["metrics"]["r2"] for data in all_model_metrics.values()]
+    
+    # Create summary report
+    summary = {
+        "total_models_trained": len(all_model_metrics),
+        "model_type_distribution": {
+            "RandomForest": rf_count,
+            "XGBoost": xgb_count
+        },
+        "average_metrics": {
+            "mae": sum(mae_values) / len(mae_values) if mae_values else 0,
+            "rmse": sum(rmse_values) / len(rmse_values) if rmse_values else 0,
+            "r2": sum(r2_values) / len(r2_values) if r2_values else 0
         }
-        
-        best_model = None
-        best_rmse = float('inf')
-        best_metrics = {}
-        
-        for model_type, model in models.items():
-            # Make predictions
-            y_pred = model.predict(X_test_item)
-            
-            # Calculate metrics
-            mae = mean_absolute_error(y_test_item, y_pred)
-            rmse = mean_squared_error(y_test_item, y_pred, squared=False)
-            r2 = r2_score(y_test_item, y_pred)
-            
-            metrics = {
-                "mae": mae,
-                "rmse": rmse,
-                "r2": r2
-            }
-            
-            print(f"  {model_type} Metrics - MAE: {mae:.2f}, RMSE: {rmse:.2f}, R²: {r2:.2f}")
-            
-            # Track best model
-            if rmse < best_rmse:
-                best_rmse = rmse
-                best_model = model
-                best_model_type = model_type
-                best_metrics = metrics
-        
-        print(f"  Best model for item {item}: {best_model_type}")
-        
-        # Create model directory
-        if location_id is not None:
-            model_prefix = f"{model_name}_item{item}_loc{location_id}"
-        else:
-            model_prefix = f"{model_name}_item{item}"
-        
-        model_dir = model_prefix
-        images_dir = os.path.join(model_dir, "images")
-        os.makedirs(images_dir, exist_ok=True)
-        
-        # Create feature importance plot
-        plt.figure(figsize=(10, 6))
-        if best_model_type == "RandomForest":
-            importances = best_model.feature_importances_
-            indices = np.argsort(importances)[::-1]
-            features = X_train_item.columns
-            
-            plt.title('Feature Importances')
-            plt.bar(range(X_train_item.shape[1]), importances[indices], align='center')
-            plt.xticks(range(X_train_item.shape[1]), [features[i] for i in indices], rotation=90)
-            plt.tight_layout()
-        else:  # XGBoost
-            xgb_model.get_booster().feature_names = list(X_train_item.columns)
-            xgb_model.get_booster().feature_importances = list(X_train_item.columns)
-            xgb_model.plot_importance(max_num_features=10)
-            plt.tight_layout()
-        
-        plt.savefig(os.path.join(images_dir, "feature_importance.png"), dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        # Save model
-        if best_model_type == "RandomForest":
-            joblib.dump(best_model, os.path.join(model_dir, "model.joblib"))
-        else:  # XGBoost
-            best_model.save_model(os.path.join(model_dir, "model.json"))
-        
-        # Register model in Hopsworks
-        model_api = mr.python.create_model(
-            name=model_prefix,
-            metrics=best_metrics,
-            version=model_version,
-            description=f"Demand forecasting model for item {item} using {best_model_type}",
-            input_example=X_train_item.iloc[0].to_dict(),
-            feature_view=feature_view
-        )
-        
-        # Upload the model and artifacts
-        model_api.save(model_dir)
+    }
     
-    print("✅ Training pipeline completed successfully")
+    # Save summary
+    with open(os.path.join(metrics_dir, "training_summary.json"), 'w') as f:
+        json.dump(summary, f, indent=2)
+    
+    print(f"✅ Training pipeline completed successfully: {len(all_model_metrics)} models trained")
+    print(f"   RandomForest models: {rf_count}, XGBoost models: {xgb_count}")
+    print(f"   Average RMSE: {summary['average_metrics']['rmse']:.2f}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training Pipeline Parameters')
