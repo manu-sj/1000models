@@ -75,19 +75,52 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     # Get feature view or create one with transformations
     try:
         feature_view = fs.get_feature_view(name=f"{feature_group_name}_view", version=version)
-    except:
-        feature_view = fs.create_feature_view(
-            name=f"{feature_group_name}_view",
-            version=version,
-            description="Feature view for demand forecasting",
-            labels=["repetitive_demand_quantity"],
-            transformation_functions=transformation_functions,
-            query=query
-        )
+        print(f"Found existing feature view: {feature_group_name}_view")
+    except Exception as e:
+        print(f"Creating new feature view: {feature_group_name}_view")
+        try:
+            feature_view = fs.create_feature_view(
+                name=f"{feature_group_name}_view",
+                version=version,
+                description="Feature view for demand forecasting",
+                labels=["repetitive_demand_quantity"],
+                transformation_functions=transformation_functions,
+                query=query
+            )
+        except Exception as create_error:
+            print(f"Error creating feature view: {str(create_error)}")
+            raise
+    
+    # Verify feature view exists
+    if feature_view is None:
+        raise ValueError("Failed to get or create feature view")
     
     print("🏋️ Creating Training Dataset")
-    # Use train_test_split from feature view for proper splitting
-    X_train, X_test, y_train, y_test = feature_view.train_test_split(test_size=test_size)
+    try:
+        # First try to create a training dataset
+        td = feature_view.create_training_data(
+            description="Training data for demand forecasting",
+            data_format="csv"
+        )
+        print(f"Created training dataset with version: {td.version}")
+        
+        # Use train_test_split from feature view for proper splitting
+        X_train, X_test, y_train, y_test = feature_view.train_test_split(test_size=test_size)
+    except Exception as e:
+        print(f"Error creating training dataset: {str(e)}")
+        # Fallback to manual data retrieval
+        print("Falling back to manual data retrieval...")
+        data = query.read()
+        
+        # Split data manually
+        from sklearn.model_selection import train_test_split as sk_train_test_split
+        
+        # Separate features and target
+        X = data.drop('repetitive_demand_quantity', axis=1)
+        y = data['repetitive_demand_quantity']
+        
+        # Split data
+        X_train, X_test, y_train, y_test = sk_train_test_split(X, y, test_size=test_size, random_state=42)
     
     # Get unique items and locations
     items = X_train['sp_id'].unique()
