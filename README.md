@@ -32,14 +32,27 @@ python inference_pipeline.py
 
 The system operates through three streamlined pipelines:
 
-1. **Feature Pipeline**: Processes data once and stores it centrally
-2. **Training Pipeline**: Automatically:
+1. **Feature Pipeline**: 
+   - Processes demand quantity data by item and location
+   - Uploads data to Hopsworks feature store
+   - Creates a central feature group with standardized format
+   - Ensures data consistency and accessibility
+
+2. **Training Pipeline**: 
+   - Creates a feature view from the feature group
    - Identifies all unique item×location combinations
-   - Trains separate RF and XGBoost models for each
-   - Selects the better model based on performance
-   - Handles insufficient data gracefully
+   - Trains both RandomForest and XGBoost models for each combination
+   - Selects the better model based on RMSE performance
+   - Handles insufficient data gracefully with minimum threshold checks
+   - Stores models in Hopsworks model registry with metadata
    - Generates a comprehensive model performance report
-3. **Inference Pipeline**: Uses the best model for each combination to generate forecasts
+
+3. **Inference Pipeline**: 
+   - Retrieves the best model for each item-location combination
+   - Generates forecasts for future time periods
+   - Creates visualizations of predicted demand
+   - Outputs forecasts in structured format
+   - Optionally uploads forecasts back to the feature store
 
 ## Configuring Scale
 
