@@ -333,6 +333,16 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
                 if model_counter % 10 == 0 or model_counter == 1:
                     print(f"  ✅ Saved model for item {item}, location {loc} using {best_model_type}")
                 
+                # Clean up local model directory after upload to save disk space
+                try:
+                    import shutil
+                    shutil.rmtree(model_dir, ignore_errors=True)
+                    if model_counter % 50 == 0:
+                        print(f"  🧹 Cleaned up local model files to save disk space (model {model_counter})")
+                except Exception as clean_error:
+                    # Non-critical error, just log and continue
+                    print(f"  ⚠️ Warning: Could not clean up local model directory: {str(clean_error)}")
+                
             except Exception as e:
                 # Convert loc to int if it's a location ID to ensure proper display
                 loc_display = int(loc) if isinstance(loc, (int, float)) or (isinstance(loc, str) and loc.isdigit()) else loc
@@ -378,6 +388,21 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     print(f"✅ Training pipeline completed successfully: {len(all_model_metrics)} models trained")
     print(f"   RandomForest models: {rf_count}, XGBoost models: {xgb_count}")
     print(f"   Average RMSE: {summary['average_metrics']['rmse']:.2f}")
+    
+    # Final cleanup of any remaining model directories
+    try:
+        print("🧹 Performing final cleanup...")
+        import shutil
+        import glob
+        
+        # Find and remove any model directories matching the pattern
+        model_dirs = glob.glob(f"{model_name}_item*_loc*")
+        for dir_path in model_dirs:
+            shutil.rmtree(dir_path, ignore_errors=True)
+        
+        print(f"   Removed {len(model_dirs)} leftover model directories")
+    except Exception as final_clean_error:
+        print(f"⚠️ Warning: Error during final cleanup: {str(final_clean_error)}")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training Pipeline Parameters')
