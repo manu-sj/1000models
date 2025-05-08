@@ -24,8 +24,8 @@ python feature_pipeline.py
 # Train 1000+ individual models (one per item-location)
 python training_pipeline.py
 
-# Generate forecasts using all trained models
-python inference_pipeline.py
+# Generate a prediction for a specific item
+python inference_pipeline.py --item 9684698
 ```
 
 ## How It Works
@@ -48,11 +48,10 @@ The system operates through three streamlined pipelines:
    - Generates a comprehensive model performance report
 
 3. **Inference Pipeline**: 
-   - Retrieves the best model for each item-location combination
-   - Generates forecasts for future time periods
-   - Creates visualizations of predicted demand
-   - Outputs forecasts in structured format
-   - Optionally uploads forecasts back to the feature store
+   - Retrieves the best model for a specific item-location combination
+   - Applies the same feature transformations used during training
+   - Generates a demand prediction for the requested time period
+   - Displays model performance metrics alongside the prediction
 
 ## Configuring Scale
 
@@ -62,74 +61,41 @@ Control the scale with simple parameters:
 # Train models for all items in a specific location
 python training_pipeline.py --location 3
 
-# Generate forecasts for a specific item across all locations
+# Generate a prediction for a specific item
 python inference_pipeline.py --item 9684698
 ```
 
 ## Inference Pipeline
 
-The system uses a sophisticated batch inference approach that leverages Hopsworks feature views to ensure consistent transformations between training and prediction.
+The system uses Hopsworks feature views to ensure consistent transformations between training and prediction.
 
-### Running Batch Inference
+### Running Inference
 
 ```bash
-# Basic inference for a specific item and location 
+# Basic inference for a specific item (location defaults to 3)
+python inference_pipeline.py --item 9684698
+
+# Specify a different location if needed
 python inference_pipeline.py --item 9684698 --location 3
 
-# Generate forecasts for all items and locations
-python inference_pipeline.py
-
-# Forecast 6 months starting from July 2023
-python inference_pipeline.py --start-year 2023 --start-month 7 --periods 6
-
-# Forecast full year 2024 for a specific item
-python inference_pipeline.py --item 8204334 --start-year 2024 --start-month 1 --periods 12
-
-# Generate forecasts for all items in location 3 for Q1 2023
-python inference_pipeline.py --location 3 --start-year 2023 --start-month 1 --periods 3
+# Predict for a specific time period
+python inference_pipeline.py --item 8204334 --start-year 2023 --start-month 7
 
 # Use a different feature group (if you've created a custom one)
-python inference_pipeline.py --feature-group custom_demand_features
+python inference_pipeline.py --item 9684698 --feature-group custom_demand_features
 ```
-
-### Advanced Features
-
-1. **Feature Transformations**: The pipeline automatically applies the same transformations used during training through the feature view, ensuring model input consistency.
-
-2. **Best Model Selection**: For each item-location, the system:
-   - Retrieves the model with the lowest RMSE 
-   - Falls back to the latest version if best model can't be determined
-   - Shows which model version is being used in logs
-
-3. **Robust Fallbacks**: If feature view transformations encounter issues, the system uses a seasonal pattern approach as a fallback, ensuring predictions are always generated.
-
-### Inference Outputs
-
-The inference pipeline generates several outputs:
-
-1. **CSV Files** (in the `forecasts/` directory):
-   - `item_demand_forecast.csv`: Detailed forecast for each item-location-period
-   - `location_demand_summary.csv`: Aggregated demand by location and time period
-
-2. **Visualizations** (in the `forecasts/plots/` directory):
-   - Individual forecast charts for each item-location
-   - Heat map of total demand by location and time period
-
-3. **Feature Store** (optional):
-   - Forecasts are uploaded to a feature group named "demand_forecast"
-   - Can be used for downstream applications or dashboards
 
 ### Technical Details
 
-The inference uses `feature_view.get_batch_data(transformed=True, write=False)` to apply the same transformations used during training, ensuring feature name consistency without writing to the feature store.
+The inference uses `feature_view.get_batch_data(transformed=True, write=False)` to apply the same transformations used during training, ensuring feature name consistency and accurate predictions.
 
 ## Performance at Scale
 
 The solution automatically:
-- Parallelizes where possible
+- Parallelizes training where possible
 - Tracks performance across the entire model fleet
 - Maintains summary statistics for all models
-- Generates visualizations to understand model behavior
+- Creates a separate model for each item-location combination
 
 ## Production Readiness
 
