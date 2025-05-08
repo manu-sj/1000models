@@ -89,16 +89,40 @@ def main(project_name='models1000', model_name='demand_forecaster', item_id=None
             # Try to get item-location specific model first
             try:
                 model_prefix = f"{model_name}_item{item}_loc{loc}"
-                model_instance = mr.get_model(model_prefix, version=1)
-                print(f"Found specific model for item {item} location {loc}")
-                model_type = "location_specific"
+                # Get the best model by RMSE (lowest is best)
+                model_instance = mr.get_best_model(model_prefix, 'rmse', 'min')
+                if model_instance:
+                    print(f"Found best specific model for item {item} location {loc} (version {model_instance.version})")
+                    model_type = "location_specific"
+                else:
+                    # If get_best_model returns None, try to get the latest version
+                    models = mr.get_models(name=model_prefix)
+                    if models and len(models) > 0:
+                        # Get the latest version
+                        model_instance = models[-1]
+                        print(f"Found latest specific model for item {item} location {loc} (version {model_instance.version})")
+                        model_type = "location_specific"
+                    else:
+                        raise Exception("No models found")
             except:
                 # Try to get item model without location
                 try:
                     model_prefix = f"{model_name}_item{item}"
-                    model_instance = mr.get_model(model_prefix, version=1)
-                    print(f"Found general model for item {item}")
-                    model_type = "item_specific"
+                    # Get the best model by RMSE (lowest is best)
+                    model_instance = mr.get_best_model(model_prefix, 'rmse', 'min')
+                    if model_instance:
+                        print(f"Found best general model for item {item} (version {model_instance.version})")
+                        model_type = "item_specific"
+                    else:
+                        # If get_best_model returns None, try to get the latest version
+                        models = mr.get_models(name=model_prefix)
+                        if models and len(models) > 0:
+                            # Get the latest version
+                            model_instance = models[-1]
+                            print(f"Found latest general model for item {item} (version {model_instance.version})")
+                            model_type = "item_specific"
+                        else:
+                            raise Exception("No models found")
                 except:
                     print(f"⚠️ No model found for item {item}")
                     continue

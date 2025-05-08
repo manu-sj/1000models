@@ -6,6 +6,7 @@ import argparse
 import os
 import json
 import matplotlib.pyplot as plt
+from datetime import datetime
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -317,12 +318,12 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
                 else:  # XGBoost
                     best_model.save_model(os.path.join(model_dir, "model.json"))
                 
-                # Register model in Hopsworks
+                # Register model in Hopsworks with automatic versioning
                 model_api = mr.python.create_model(
                     name=model_prefix,
                     metrics=best_metrics,
-                    version=model_version,
-                    description=f"Demand forecasting model for item {item}, location {loc} using {best_model_type}",
+                    # Omit version to use automatic incremental versioning
+                    description=f"Demand forecasting model for item {item}, location {loc} using {best_model_type} - {datetime.now().strftime('%Y-%m-%d')}",
                     input_example=X_train_item.iloc[0].to_dict(),
                     feature_view=feature_view
                 )
