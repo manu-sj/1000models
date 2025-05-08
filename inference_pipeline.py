@@ -44,34 +44,83 @@ def main(project_name='models1000', model_name='demand_forecaster', item_id=None
     fs = project.get_feature_store()
     
     print("🔍 Getting item and location metadata")
+    
+    # Two approaches to get available items and locations:
+    # 1. From feature store (preferred for complete list)
+    # 2. From model registry (as fallback)
+    
+    available_items = []
+    available_locations = []
+    
+    # Approach 1: Get metadata from feature store
     try:
         demand_fg = fs.get_feature_group("demand_features", version=1)
         # Get all unique items and locations if not specified
         query = demand_fg.select(['sp_id', 'loc_id']).distinct()
         df = query.read()
         
-        available_items = df['sp_id'].unique()
-        available_locations = df['loc_id'].unique()
+        available_items = df['sp_id'].unique().tolist()
+        available_locations = df['loc_id'].unique().tolist()
         
-        if item_id and item_id not in available_items:
-            print(f"⚠️ Warning: Item {item_id} not found in feature store")
-            return
-        
-        if location_id and location_id not in available_locations:
-            print(f"⚠️ Warning: Location {location_id} not found in feature store")
-            return
-        
-        # Filter the items and locations to forecast
-        items_to_forecast = [item_id] if item_id else available_items
-        locations_to_forecast = [location_id] if location_id else available_locations
-    except:
-        print("⚠️ Could not retrieve metadata from feature store, using provided values")
-        items_to_forecast = [item_id] if item_id else []
-        locations_to_forecast = [location_id] if location_id else []
-        
-        if not items_to_forecast or not locations_to_forecast:
-            print("⚠️ No items or locations specified and could not retrieve from feature store")
-            return
+        print(f"Found {len(available_items)} items and {len(available_locations)} locations in feature store")
+    except Exception as e:
+        print(f"⚠️ Could not retrieve metadata from feature store: {str(e)}")
+    
+    # Approach 2: If feature store approach failed or if we specified only location,
+    # try to find models in model registry
+    if not available_items or (not item_id and location_id):
+        print("Checking available models in model registry...")
+        try:
+            # Get all models that match the pattern for this forecaster
+            all_models = mr.get_models(name=f"{model_name}_item*")
+            
+            # Extract item and location IDs from model names
+            for model in all_models:
+                # Extract item ID from model name (format: "model_name_itemXXXX_locYY")
+                model_name_parts = model.name.split('_')
+                if len(model_name_parts) >= 3:
+                    item_part = model_name_parts[2]
+                    if item_part.startswith('item'):
+                        try:
+                            extracted_item = int(item_part[4:])
+                            if extracted_item not in available_items:
+                                available_items.append(extracted_item)
+                        except:
+                            pass
+                
+                # Extract location ID if present
+                if len(model_name_parts) >= 4:
+                    loc_part = model_name_parts[3]
+                    if loc_part.startswith('loc'):
+                        try:
+                            extracted_loc = int(loc_part[3:])
+                            if extracted_loc not in available_locations:
+                                available_locations.append(extracted_loc)
+                        except:
+                            pass
+            
+            print(f"Found {len(available_items)} items and {len(available_locations)} locations from model registry")
+        except Exception as e:
+            print(f"⚠️ Could not retrieve models from model registry: {str(e)}")
+    
+    # Validate provided item_id and location_id if specified
+    if item_id and available_items and item_id not in available_items:
+        print(f"⚠️ Warning: Item {item_id} not found in available items")
+        return
+    
+    if location_id and available_locations and location_id not in available_locations:
+        print(f"⚠️ Warning: Location {location_id} not found in available locations")
+        return
+    
+    # Filter the items and locations to forecast
+    items_to_forecast = [item_id] if item_id else available_items
+    locations_to_forecast = [location_id] if location_id else available_locations
+    
+    if not items_to_forecast or not locations_to_forecast:
+        print("⚠️ No items or locations available for forecasting")
+        return
+    
+    print(f"Will forecast for {len(items_to_forecast)} items and {len(locations_to_forecast)} locations")
     
     # Prepare for forecasting
     forecast_data = []
