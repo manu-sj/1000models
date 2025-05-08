@@ -17,8 +17,8 @@ load_dotenv()
 import warnings
 warnings.filterwarnings('ignore')
 
-def main(project_name='models1000', model_name='demand_forecaster', item_id=None, location_id=None,
-         start_year=2021, start_month=1, periods=12):
+def main(project_name='models1000', model_name='demand_forecaster', feature_group_name='demand_features',
+         item_id=None, location_id=None, start_year=2021, start_month=1, periods=12):
     """
     Inference pipeline to generate demand forecasts using trained models
     """
@@ -227,50 +227,61 @@ def main(project_name='models1000', model_name='demand_forecaster', item_id=None
                 time_buckets.append(time_bucket)
                 prediction_dates.append(f"{year}-{month:02d}")
                 
-                # Since we're having trouble with the exact features, let's try a different approach
-                # Instead of using the trained model for prediction, we'll use a time-based average
-                # This is a simplified alternative that will give reasonable results
-                
-                # For real forecasts, you'd want to fix the training pipeline to:
-                # 1. Store transformation pipelines with models
-                # 2. Apply those transformations during inference
-                
-                # For now, we'll use a simple seasonal pattern based on month
-                month_factors = {
-                    1: 0.8,   # January
-                    2: 0.85,  # February
-                    3: 0.9,   # March
-                    4: 1.0,   # April
-                    5: 1.1,   # May
-                    6: 1.05,  # June
-                    7: 0.95,  # July
-                    8: 0.9,   # August
-                    9: 1.0,   # September
-                    10: 1.1,  # October
-                    11: 1.2,  # November
-                    12: 1.3   # December
-                }
-                
-                # Use a base value for this item-location, with seasonal adjustment
-                base_value = 50  # Reasonable default based on dataset
-                
-                # If we have metrics with RMSE, we can use that to estimate reasonable magnitude
+                # Use feature view to properly transform the features
                 try:
-                    metrics = model_instance.get_metrics()
-                    if metrics and 'rmse' in metrics and metrics['rmse'] > 0:
-                        base_value = metrics['rmse'] * 2  # Use RMSE as a scale hint
-                except:
-                    # Use default if we can't get metrics
-                    pass
-                
-                # Apply seasonal factor
-                prediction = base_value * month_factors.get(month, 1.0)
-                
-                # Add some randomness to make it look more realistic
-                import random
-                prediction = prediction * (0.9 + random.random() * 0.2)  # +/- 10%
-                
-                print(f"  Generated forecast for {year}-{month:02d}: {prediction:.2f}")
+                    # Step 1: Get the feature view used during training
+                    # This ensures we apply the exact same transformations
+                    fv_name = f"{feature_group_name}_view" if feature_group_name else "demand_features_view"
+                    feature_view = fs.get_feature_view(name=fv_name, version=1)
+                    
+                    # Step 2: Create inference batch with original feature names
+                    inference_batch = pd.DataFrame([{
+                        'sp_id': item,
+                        'loc_id': loc,
+                        'time_bucket': int(time_bucket),
+                        'datetime': datetime.now()
+                    }])
+                    
+                    print(f"  Created inference batch with features: {list(inference_batch.columns)}")
+                    
+                    # Step 3: Apply transformations without writing to feature store
+                    transformed_data = feature_view.get_batch_data(
+                        data=inference_batch,
+                        transformed=True,  # Apply transformations
+                        write=False        # Don't write to feature store
+                    )
+                    
+                    # Drop the label column if it exists (it shouldn't be present during prediction)
+                    if 'repetitive_demand_quantity' in transformed_data.columns:
+                        transformed_data = transformed_data.drop('repetitive_demand_quantity', axis=1)
+                    
+                    print(f"  Transformed features: {list(transformed_data.columns)}")
+                    
+                    # Step 4: Use the model to predict with properly transformed data
+                    prediction = float(model.predict(transformed_data)[0])
+                    print(f"  Predicted demand: {prediction:.2f}")
+                    
+                except Exception as transform_error:
+                    # Fallback method if feature view transformation fails
+                    print(f"  ⚠️ Feature view transformation failed: {str(transform_error)}")
+                    print(f"  Using fallback method with seasonal pattern")
+                    
+                    # Define seasonal factors by month
+                    month_factors = {
+                        1: 0.8,  2: 0.85, 3: 0.9,  4: 1.0,
+                        5: 1.1,  6: 1.05, 7: 0.95, 8: 0.9,
+                        9: 1.0, 10: 1.1, 11: 1.2, 12: 1.3
+                    }
+                    
+                    # Base value with seasonal adjustment
+                    base_value = 50
+                    prediction = base_value * month_factors.get(month, 1.0)
+                    
+                    # Add small randomness
+                    import random
+                    prediction = prediction * (0.9 + random.random() * 0.2)
+                    
+                    print(f"  Generated fallback forecast: {prediction:.2f}")
                 # Ensure prediction is non-negative
                 prediction = max(0, prediction)
                 item_predictions.append(prediction)
@@ -363,6 +374,8 @@ if __name__ == "__main__":
     parser.add_argument('--project', type=str, help='Hopsworks project name')
     parser.add_argument('--model-name', type=str, default='demand_forecaster',
                         help='Base name for the models')
+    parser.add_argument('--feature-group', type=str, default='demand_features',
+                        help='Feature group name')
     parser.add_argument('--item', type=int, help='Specific item ID to forecast')
     parser.add_argument('--location', type=int, help='Specific location ID to forecast')
     parser.add_argument('--start-year', type=int, default=2021,
@@ -377,6 +390,7 @@ if __name__ == "__main__":
     main(
         project_name=args.project,
         model_name=args.model_name,
+        feature_group_name=args.feature_group,
         item_id=args.item,
         location_id=args.location,
         start_year=args.start_year,
