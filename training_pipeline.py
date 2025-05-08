@@ -87,17 +87,10 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
             # Apply the transformation function to specific column
             transformation_functions.append(standard_scaler(col))
         
-    # Apply label_encoder to categorical columns (excluding datetime, sp_id, and loc_id)
-    # sp_id and loc_id are primary keys and shouldn't be transformed
-    categorical_for_encoding = [col for col in cat_cols 
-                              if col not in ['datetime', 'sp_id', 'loc_id']]
-    
-    if categorical_for_encoding:
-        print(f"Applying label encoding to {len(categorical_for_encoding)} categorical columns")
-        for col in categorical_for_encoding:
-            transformation_functions.append(label_encoder(col))
-    else:
-        print("No categorical columns to encode")
+    # Don't apply any transformations for now to make sure we can get data
+    # This will help us focus on basic functionality first
+    print("Skipping transformations to ensure data availability")
+    transformation_functions = []
     
     print(f"Set up transformations for {len(transformation_functions)} columns total")
         
@@ -119,12 +112,12 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
             print(f"  {i+1}. {tf_info}")
         
         # Use get_or_create_feature_view method which handles both cases properly
+        # Skip transformation functions for now to simplify and avoid empty dataset issues
         feature_view = fs.get_or_create_feature_view(
             name=f"{feature_group_name}_view",
             version=version,
             description="Feature view for demand forecasting",
             labels=["repetitive_demand_quantity"],
-            transformation_functions=transformation_functions,
             query=query
         )
         print(f"Successfully got or created feature view: {feature_group_name}_view")
@@ -251,7 +244,7 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
             
             # Skip if we don't have enough data for this combination
             if sum(item_loc_mask_train) < 10 or sum(item_loc_mask_test) < 5:
-                print(f"⚠️ Skipping Item: {item}, Location: {loc} due to insufficient data")
+                print(f"⚠️ Skipping Item: {item}, Location: {loc} due to insufficient data (train: {sum(item_loc_mask_train)}, test: {sum(item_loc_mask_test)})")
                 continue
             
             X_train_item = X_train[item_loc_mask_train].drop(['sp_id', 'loc_id', 'datetime'], axis=1)
@@ -299,7 +292,8 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
                     
                     # Calculate metrics
                     mae = mean_absolute_error(y_test_item, y_pred)
-                    rmse = mean_squared_error(y_test_item, y_pred, squared=False)
+                    mse = mean_squared_error(y_test_item, y_pred)
+                    rmse = np.sqrt(mse)  # Calculate RMSE manually instead of using squared=False
                     r2 = r2_score(y_test_item, y_pred)
                     
                     metrics = {
