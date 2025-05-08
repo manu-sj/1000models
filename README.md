@@ -66,6 +66,41 @@ python training_pipeline.py --location 3
 python inference_pipeline.py --item 9684698
 ```
 
+## Inference Examples
+
+Run batch inference with various configurations:
+
+```bash
+# Basic inference for all items and locations with default settings (12 months starting from 2021-01)
+python inference_pipeline.py
+
+# Generate forecasts for a specific item-location combination
+python inference_pipeline.py --item 9684698 --location 3
+
+# Forecast 6 months starting from July 2023
+python inference_pipeline.py --start-year 2023 --start-month 7 --periods 6
+
+# Forecast full year 2024 for a specific item
+python inference_pipeline.py --item 8204334 --start-year 2024 --start-month 1 --periods 12
+
+# Generate forecasts for all items in location 3 for Q1 2023
+python inference_pipeline.py --location 3 --start-year 2023 --start-month 1 --periods 3
+```
+
+The inference pipeline generates several outputs:
+
+1. **CSV Files** (in the `forecasts/` directory):
+   - `item_demand_forecast.csv`: Detailed forecast for each item-location-period
+   - `location_demand_summary.csv`: Aggregated demand by location and time period
+
+2. **Visualizations** (in the `forecasts/plots/` directory):
+   - Individual forecast charts for each item-location
+   - Heat map of total demand by location and time period
+
+3. **Feature Store** (optional):
+   - Forecasts are uploaded to a feature group named "demand_forecast"
+   - Can be used for downstream applications or dashboards
+
 ## Performance at Scale
 
 The solution automatically:
