@@ -1,4 +1,3 @@
-Item,Location,Month,Value to predict
 sp_id,loc_id,time_bucket,repetitive_demand_quantity
 9684698,3,202104,55
 9684698,3,202105,117
