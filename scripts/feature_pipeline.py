@@ -16,16 +16,9 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     api_key = os.getenv("HOPSWORKS_API_KEY")
     host = os.getenv("HOST")
     port = os.getenv("PORT")
-    
-    if not api_key:
-        print("⚠️ No API key found in environment variables")
-        return
-        
-    if project_name:
-        project = hopsworks.login(host=host, port=port, api_key_value=api_key, project=project_name)
-    else:
-        project_name = os.getenv("PROJECT")
-        project = hopsworks.login(host=host, port=port, api_key_value=api_key, project=project_name)
+
+    project_name = project_name or os.getenv("PROJECT")
+    project = hopsworks.login(host=host, port=port, api_key_value=api_key, project=project_name)
     
     fs = project.get_feature_store()
     

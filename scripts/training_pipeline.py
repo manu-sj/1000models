@@ -28,11 +28,7 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     api_key = os.getenv("HOPSWORKS_API_KEY")
     host = os.getenv("HOST")
     port = os.getenv("PORT")
-    
-    if not api_key:
-        print("No API key found in environment variables")
-        return
-        
+
     project = hopsworks.login(host=host, port=port, api_key_value=api_key, project=project_name)
     fs = project.get_feature_store()
     
@@ -191,15 +187,11 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
                 if model_counter % 5 == 0 or model_counter == 1:
                     print(f"  Saved model for item {item}, location {loc} using {best_model_type}")
                 
-                # Clean up local model directory after upload to save disk space
-                try:
-                    import shutil
-                    shutil.rmtree(model_dir, ignore_errors=True)
-                except Exception as clean_error:
-                    print(f"  Warning: Could not clean up local model directory: {str(clean_error)}")
+                # Clean up local model directory
+                import shutil
+                shutil.rmtree(model_dir, ignore_errors=True)
                 
-            except Exception as e:
-                print(f"Error training model for Item: {item}, Location: {loc}: {str(e)}")
+            except Exception:
                 continue
     
     # Save overall metrics summary
@@ -243,19 +235,13 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     print(f"Average RMSE: {summary['average_metrics']['rmse']:.2f}")
     
     # Final cleanup of any remaining model directories
-    try:
-        print("Performing final cleanup...")
-        import shutil
-        import glob
-        
-        # Find and remove any model directories matching the pattern
-        model_dirs = glob.glob(f"{model_name}_item*_loc*")
-        for dir_path in model_dirs:
-            shutil.rmtree(dir_path, ignore_errors=True)
-        
-        print(f"Removed {len(model_dirs)} leftover model directories")
-    except Exception as final_clean_error:
-        print(f"Warning: Error during final cleanup: {str(final_clean_error)}")
+    import shutil
+    import glob
+
+    # Find and remove any model directories matching the pattern
+    model_dirs = glob.glob(f"{model_name}_item*_loc*")
+    for dir_path in model_dirs:
+        shutil.rmtree(dir_path, ignore_errors=True)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training Pipeline Parameters')
