@@ -1,119 +1,110 @@
-# 1000models - Extreme Model Parameterization Demo
+# 1000models - Extreme Model Parameterization
 
-A demonstration of how to train, manage, and serve thousands of specialized ML models from a single codebase.
+A demonstration of how parameterization enables scaling from a single data source to thousands of specialized production-grade ML models.
 
-## Extreme Parameterization
+```
+┌───────────┐     ┌──────────────┐     ┌───────────────────────────┐
+│ Data      │     │ Feature      │     │       Model Training      │
+│ Source    │────▶│ Store        │────▶│                           │
+│           │     │              │     │  ┌─────┐  ┌─────┐  ┌─────┐│
+└───────────┘     └──────────────┘     │  │Model│  │Model│  │Model││
+                                       │  │ 1   │  │ 2   │  │ ... ││
+                                       │  └─────┘  └─────┘  └─────┘│
+                                       └───────────────┬───────────┘
+                                                       │
+                                                       ▼
+┌────────────────┐     ┌──────────────┐     ┌─────────────────────┐
+│ Production     │     │ Best Model   │     │   Model Registry    │
+│ Predictions    │◀────│ Selection    │◀────│                     │
+│                │     │              │     │ (1000+ models with  │
+└────────────────┘     └──────────────┘     │  performance data)  │
+                                            └─────────────────────┘
+```
 
-This project showcases how to:
+## Parameterization Strategy
 
-- **Train thousands of models** with a single command
-- Create a **separate model for each item×location combination**
-- Automatically **select the best algorithm** for each combination
+1000models demonstrates how to use parameterization to:
+
+- Transform a single data source into **thousands of specialized ML models**
+- Train a **separate model for each item×location combination**
+- Automatically **select the best algorithm** for each scenario
 - **Scale effortlessly** from hundreds to thousands of models
-- Maintain a **single entry point** while handling massive complexity underneath
+- Maintain a **single MLOps workflow** while handling massive complexity
 
-## Quick Start
+## Interactive Notebooks
+
+The primary way to use this project is through our Jupyter notebooks:
+
+- **[Feature Pipeline](notebooks/feature_pipeline.ipynb)**: Prepare and upload demand data
+- **[Training Pipeline](notebooks/training_pipeline.ipynb)**: Train specialized models by parameter
+- **[Inference Pipeline](notebooks/inference_pipeline.ipynb)**: Generate predictions with best model selection
+
+Each notebook is self-contained and includes detailed guidance.
+
+## Quick Setup
 
 ```bash
+# Clone the repository
+git clone https://github.com/yourusername/1000models.git
+cd 1000models
+
 # Install dependencies
 pip install -r requirements.txt
 
-# Process demand data and upload to feature store
-python scripts/feature_pipeline.py
-
-# Train 1000+ individual models (one per item-location)
-python scripts/training_pipeline.py
-
-# Generate a prediction for a specific item
-python scripts/inference_pipeline.py --item 9684698
+# Test connection to Hopsworks
+python test_connection.py
 ```
 
-## How It Works
+## Parameterization Workflow
 
-The system operates through three streamlined pipelines:
+The system follows this parameterized approach:
 
-1. **Feature Pipeline**:
-   - Processes demand quantity data by item and location
-   - Uploads data to Hopsworks feature store
-   - Creates a central feature group with standardized format
-   - Ensures data consistency and accessibility
+1. **Feature Preparation**
+   - Process data into a single feature store
+   - Create a unified view of demand data by item and location
 
-2. **Training Pipeline**:
-   - Creates a feature view with label encoding for location IDs
-   - Directly filters the feature view for each item×location combination
-   - Trains both RandomForest and XGBoost models for each combination
-   - Selects the better model based on RMSE performance
-   - Handles insufficient data gracefully with minimum threshold checks
-   - Stores models in Hopsworks model registry with metadata
-   - Generates a comprehensive model performance report
+2. **Parameterized Model Training**
+   - Automatically generate training subsets for each parameter combination
+   - Train competing models (RandomForest and XGBoost) for each parameter set
+   - Select best model based on performance metrics
+   - Register all models with full parameter metadata
 
-3. **Inference Pipeline**:
-   - Retrieves the best model for a specific item-location combination
-   - Applies the same feature transformations used during training
-   - Generates a demand prediction for the requested time period
-   - Displays model performance metrics alongside the prediction
-
-## Jupyter Notebooks
-
-Interactive notebooks are provided to demonstrate each pipeline:
-
-- `notebooks/feature_pipeline.ipynb`: Feature engineering and storage process
-- `notebooks/training_pipeline.ipynb`: The model training workflow
-- `notebooks/inference_pipeline.ipynb`: Making predictions with trained models
-
-## Configuring Scale
-
-Control the scale with simple parameters:
-
-```bash
-# Train models for all items in a specific location
-python scripts/training_pipeline.py --location 3
-
-# Generate a prediction for a specific item
-python scripts/inference_pipeline.py --item 9684698
-```
-
-## Inference Pipeline
-
-The system uses Hopsworks feature views to ensure consistent transformations between training and prediction.
-
-### Running Inference
-
-```bash
-# Basic inference for a specific item (location defaults to 3)
-python scripts/inference_pipeline.py --item 9684698
-
-# Specify a different location if needed
-python scripts/inference_pipeline.py --item 9684698 --location 3
-
-# Use a different feature group (if you've created a custom one)
-python scripts/inference_pipeline.py --item 9684698 --feature-group custom_demand_features
-```
-
-### Technical Details
-
-The inference uses feature view filtering to apply the same transformations used during training, ensuring feature consistency and accurate predictions. All feature engineering is performed in the feature pipeline to maintain consistency.
-
-## Performance at Scale
-
-The solution automatically:
-- Directly filters data at the feature view level for efficient processing
-- Tracks performance across the entire model fleet
-- Maintains summary statistics for all models
-- Creates a separate model for each item-location combination
-
-## Production Readiness
-
-Built on enterprise-grade Hopsworks for:
-- Feature storage and versioning
-- Model registry and governance
-- Online model serving
-- Monitoring and tracking
+3. **Intelligent Model Selection**
+   - Dynamically select the best-performing model for each parameter combination
+   - Generate predictions using the optimal model for each use case
 
 ## Design Principles
 
-Key principles implemented in this project:
-- All feature engineering is done in the feature pipeline (left of feature view)
-- Transformations are defined once and reused consistently
-- Direct filtering of feature views for efficient and accurate model training
-- Clean separation between feature engineering, training, and inference
+- **Parameter-Driven Architecture**: Structure determined by business parameters
+- **Automatic Model Selection**: System chooses best model type for each parameter combo
+- **Notebook-First Interface**: Interactive, self-documenting workflow
+- **MLOps Integration**: Complete cycle from data to production predictions
+
+## Command-Line Interface
+
+For automated workflows, script versions of each pipeline are also available:
+
+```bash
+# Process demand data
+python scripts/feature_pipeline.py
+
+# Train models (all items, all locations)
+python scripts/training_pipeline.py
+
+# Train models for a specific parameter set
+python scripts/training_pipeline.py --location 3
+
+# Generate a prediction using the best model for these parameters
+python scripts/inference_pipeline.py --item 9684698
+```
+
+## Technical Stack
+
+- **Feature Management**: Hopsworks Feature Store
+- **Model Training**: Scikit-learn and XGBoost with automatic selection
+- **Model Registry**: Hopsworks Model Registry with parameter metadata
+- **Visualization**: Matplotlib (in notebooks)
+
+---
+
+This project demonstrates how extreme parameterization creates specialized models that significantly improve forecasting accuracy while maintaining a clean, unified MLOps workflow.
