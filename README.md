@@ -36,13 +36,13 @@ A demonstration of how parameterization enables scaling from a single data sourc
 - **Scale effortlessly** from hundreds to thousands of models
 - Maintain a **single MLOps workflow** while handling massive complexity
 
-## Interactive Notebooks (In Sequence)
+## Interactive Notebooks
 
-The primary way to use this project is through our Jupyter notebooks, which should be run in this order:
+The primary way to use this project is through our Jupyter notebooks, which are numbered in sequence:
 
-1. **[Feature Pipeline](notebooks/feature_pipeline.ipynb)**: Prepare and upload demand data
-2. **[Training Pipeline](notebooks/training_pipeline.ipynb)**: Train specialized models by parameter
-3. **[Inference Pipeline](notebooks/inference_pipeline.ipynb)**: Generate predictions with best model selection
+1. **[Feature Pipeline](notebooks/01_feature_pipeline.ipynb)**: Prepare and upload demand data
+2. **[Training Pipeline](notebooks/02_training_pipeline.ipynb)**: Train specialized models by parameter
+3. **[Inference Pipeline](notebooks/03_inference_pipeline.ipynb)**: Generate predictions with best model selection
 
 Each notebook is self-contained and includes detailed guidance.
 
@@ -85,23 +85,23 @@ The system follows this parameterized approach in sequence:
 - **Notebook-First Interface**: Interactive, self-documenting workflow
 - **MLOps Integration**: Complete cycle from data to production predictions
 
-## Command-Line Interface (In Sequence)
+## Command-Line Interface
 
-For automated workflows, script versions of each pipeline are also available:
+For automated workflows, numbered script versions of each pipeline are also available:
 
 ```bash
 # 1. Process demand data
-python scripts/feature_pipeline.py
+python scripts/01_feature_pipeline.py
 
 # 2. Train models (all items, all locations)
-python scripts/training_pipeline.py
+python scripts/02_training_pipeline.py
 
 # 3. Generate a prediction using the best model for these parameters
-python scripts/inference_pipeline.py --item 9684698
+python scripts/03_inference_pipeline.py --item 9684698
 
 # Other options:
 # Train models for a specific parameter set
-python scripts/training_pipeline.py --location 3
+python scripts/02_training_pipeline.py --location 3
 ```
 
 ## Technical Stack
