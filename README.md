@@ -3,22 +3,27 @@
 A demonstration of how parameterization enables scaling from a single data source to thousands of specialized production-grade ML models.
 
 ```
-┌───────────┐     ┌──────────────┐     ┌───────────────────────────┐
-│ Data      │     │ Feature      │     │       Model Training      │
-│ Source    │────▶│ Store        │────▶│                           │
-│           │     │              │     │  ┌─────┐  ┌─────┐  ┌─────┐│
-└───────────┘     └──────────────┘     │  │Model│  │Model│  │Model││
-                                       │  │ 1   │  │ 2   │  │ ... ││
-                                       │  └─────┘  └─────┘  └─────┘│
-                                       └───────────────┬───────────┘
-                                                       │
-                                                       ▼
-┌────────────────┐     ┌──────────────┐     ┌─────────────────────┐
-│ Production     │     │ Best Model   │     │   Model Registry    │
-│ Predictions    │◀────│ Selection    │◀────│                     │
-│                │     │              │     │ (1000+ models with  │
-└────────────────┘     └──────────────┘     │  performance data)  │
-                                            └─────────────────────┘
+┌─────────────────┐       ┌────────────────────────┐      ┌──────────────────────────────┐
+│  Data Source    │       │     Feature Store      │      │      Parameterized Models    │
+│                 │       │                        │      │                              │
+│  demand_df =    │       │ fs.get_or_create_      │      │  # For each item,location:   │
+│  pd.read_csv(   │──────▶│ feature_group(         │─────▶│  models = {                  │
+│  'demand.csv')  │       │   name='demand',       │      │    'RandomForest': rf_model, │
+│                 │       │   primary_key=['item', │      │    'XGBoost': xgb_model      │
+└─────────────────┘       │   'location'])         │      │  }                           │
+                          └────────────────────────┘      │  # Select best               │
+                                                          │  best_model = min(rmse)      │
+                                                          └────────────────┬─────────────┘
+                                                                           │
+                                                                           ▼
+┌─────────────────┐       ┌────────────────────────┐      ┌──────────────────────────────┐
+│  Production     │       │   Model Selection      │      │     Model Registry           │
+│  Predictions    │       │                        │      │                              │
+│                 │       │  model = mr.get_best_  │      │  model_api.save(             │
+│  prediction =   │◀──────│  model(                │◀─────│    name=f"model_item{item}_  │
+│  model.predict( │       │    name=f"model_item   │      │    loc{location}",           │
+│  time_bucket)   │       │    {item}_loc{loc}")   │      │    metrics=metrics)          │
+└─────────────────┘       └────────────────────────┘      └──────────────────────────────┘
 ```
 
 ## Parameterization Strategy
