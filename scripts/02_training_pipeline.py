@@ -236,12 +236,7 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
         print(f"RandomForest: {rf_count}, XGBoost: {xgb_count}")
         print(f"Average RMSE: {summary['average_metrics']['rmse']:.2f}")
     
-    # Final cleanup of any leftover model directories
-    import shutil
-    import glob
-    model_dirs = glob.glob(f"{model_name}_item*_loc*")
-    for dir_path in model_dirs:
-        shutil.rmtree(dir_path, ignore_errors=True)
+    # All model directories are cleaned up during training
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Training Pipeline Parameters')
