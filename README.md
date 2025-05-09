@@ -85,25 +85,6 @@ The system follows this parameterized approach in sequence:
 - **Notebook-First Interface**: Interactive, self-documenting workflow
 - **MLOps Integration**: Complete cycle from data to production predictions
 
-## Command-Line Interface
-
-For automated workflows, numbered script versions of each pipeline are also available:
-
-```bash
-# 1. Process demand data
-python scripts/01_feature_pipeline.py
-
-# 2. Train models (all items, all locations)
-python scripts/02_training_pipeline.py
-
-# 3. Generate a prediction using the best model for these parameters
-python scripts/03_inference_pipeline.py --item 9684698
-
-# Other options:
-# Train models for a specific parameter set
-python scripts/02_training_pipeline.py --location 3
-```
-
 ## Technical Stack
 
 - **Feature Management**: Hopsworks Feature Store
