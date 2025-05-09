@@ -19,39 +19,47 @@ This project showcases how to:
 pip install -r requirements.txt
 
 # Process demand data and upload to feature store
-python feature_pipeline.py
+python scripts/feature_pipeline.py
 
 # Train 1000+ individual models (one per item-location)
-python training_pipeline.py
+python scripts/training_pipeline.py
 
 # Generate a prediction for a specific item
-python inference_pipeline.py --item 9684698
+python scripts/inference_pipeline.py --item 9684698
 ```
 
 ## How It Works
 
 The system operates through three streamlined pipelines:
 
-1. **Feature Pipeline**: 
+1. **Feature Pipeline**:
    - Processes demand quantity data by item and location
    - Uploads data to Hopsworks feature store
    - Creates a central feature group with standardized format
    - Ensures data consistency and accessibility
 
-2. **Training Pipeline**: 
-   - Creates a feature view from the feature group
-   - Identifies all unique item×location combinations
+2. **Training Pipeline**:
+   - Creates a feature view with label encoding for location IDs
+   - Directly filters the feature view for each item×location combination
    - Trains both RandomForest and XGBoost models for each combination
    - Selects the better model based on RMSE performance
    - Handles insufficient data gracefully with minimum threshold checks
    - Stores models in Hopsworks model registry with metadata
    - Generates a comprehensive model performance report
 
-3. **Inference Pipeline**: 
+3. **Inference Pipeline**:
    - Retrieves the best model for a specific item-location combination
    - Applies the same feature transformations used during training
    - Generates a demand prediction for the requested time period
    - Displays model performance metrics alongside the prediction
+
+## Jupyter Notebooks
+
+Interactive notebooks are provided to demonstrate each pipeline:
+
+- `notebooks/feature_pipeline.ipynb`: Feature engineering and storage process
+- `notebooks/training_pipeline.ipynb`: The model training workflow
+- `notebooks/inference_pipeline.ipynb`: Making predictions with trained models
 
 ## Configuring Scale
 
@@ -59,10 +67,10 @@ Control the scale with simple parameters:
 
 ```bash
 # Train models for all items in a specific location
-python training_pipeline.py --location 3
+python scripts/training_pipeline.py --location 3
 
 # Generate a prediction for a specific item
-python inference_pipeline.py --item 9684698
+python scripts/inference_pipeline.py --item 9684698
 ```
 
 ## Inference Pipeline
@@ -73,26 +81,23 @@ The system uses Hopsworks feature views to ensure consistent transformations bet
 
 ```bash
 # Basic inference for a specific item (location defaults to 3)
-python inference_pipeline.py --item 9684698
+python scripts/inference_pipeline.py --item 9684698
 
 # Specify a different location if needed
-python inference_pipeline.py --item 9684698 --location 3
-
-# Predict for a specific time period
-python inference_pipeline.py --item 8204334 --start-year 2023 --start-month 7
+python scripts/inference_pipeline.py --item 9684698 --location 3
 
 # Use a different feature group (if you've created a custom one)
-python inference_pipeline.py --item 9684698 --feature-group custom_demand_features
+python scripts/inference_pipeline.py --item 9684698 --feature-group custom_demand_features
 ```
 
 ### Technical Details
 
-The inference uses `feature_view.get_batch_data(transformed=True, write=False)` to apply the same transformations used during training, ensuring feature name consistency and accurate predictions.
+The inference uses feature view filtering to apply the same transformations used during training, ensuring feature consistency and accurate predictions. All feature engineering is performed in the feature pipeline to maintain consistency.
 
 ## Performance at Scale
 
 The solution automatically:
-- Parallelizes training where possible
+- Directly filters data at the feature view level for efficient processing
 - Tracks performance across the entire model fleet
 - Maintains summary statistics for all models
 - Creates a separate model for each item-location combination
@@ -104,3 +109,11 @@ Built on enterprise-grade Hopsworks for:
 - Model registry and governance
 - Online model serving
 - Monitoring and tracking
+
+## Design Principles
+
+Key principles implemented in this project:
+- All feature engineering is done in the feature pipeline (left of feature view)
+- Transformations are defined once and reused consistently
+- Direct filtering of feature views for efficient and accurate model training
+- Clean separation between feature engineering, training, and inference
