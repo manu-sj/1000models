@@ -58,9 +58,7 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
     print("🔮 Loading demand data")
     demand_df = load_demand_data()
     
-    print(f"🚀 Found {demand_df['sp_id'].nunique()} unique items")
-    print(f"🚀 Found {demand_df['loc_id'].nunique()} unique locations")
-    print(f"🚀 Found {demand_df['time_bucket'].nunique()} unique time periods")
+    print(f"🚀 Found {demand_df['sp_id'].nunique()} items × {demand_df['loc_id'].nunique()} locations")
     
     print("⬆️ Uploading to Feature Store")
     upload_features(

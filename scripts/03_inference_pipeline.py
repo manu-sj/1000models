@@ -30,7 +30,7 @@ def predict(project_name='models1000', model_name='demand_forecaster',
         now = datetime.now()
         time_bucket = int(f"{now.year}{now.month:02d}")
     
-    # Look for the model
+    # Get model for this item-location
     model_prefix = f"{model_name}_item{item_id}_loc{location_id}"
     
     try:
@@ -41,13 +41,8 @@ def predict(project_name='models1000', model_name='demand_forecaster',
             sort_metrics_by="min"
         )
         
-        # Download model
+        # Download and load model
         model_dir = model_instance.download()
-        
-        # Create inference data
-        inference_data = pd.DataFrame([{'time_bucket': time_bucket}])
-        
-        # Load model
         if os.path.exists(os.path.join(model_dir, "model.joblib")):
             model = joblib.load(os.path.join(model_dir, "model.joblib"))
         else:
@@ -56,18 +51,17 @@ def predict(project_name='models1000', model_name='demand_forecaster',
             model.load_model(os.path.join(model_dir, "model.json"))
         
         # Make prediction
+        inference_data = pd.DataFrame([{'time_bucket': time_bucket}])
         prediction = float(model.predict(inference_data)[0])
         prediction = max(0, prediction)  # Ensure non-negative
         
-        # Get metrics
-        metrics = model_instance.get_metrics()
-        
+        # Return result
         return {
             "item_id": item_id,
             "location_id": location_id,
             "time_period": time_bucket,
             "predicted_demand": prediction,
-            "metrics": metrics
+            "metrics": model_instance.get_metrics()
         }
             
     except Exception:
@@ -77,39 +71,25 @@ def batch_predict(project_name, model_name, items, locations, time_period):
     """
     Batch prediction for multiple item-location combinations
     """
-    # Connect to Hopsworks
-    project = hopsworks.login(
-        host=os.getenv("HOST"),
-        port=os.getenv("PORT"),
-        api_key_value=os.getenv("HOPSWORKS_API_KEY"),
-        project=project_name or os.getenv("PROJECT")
-    )
-    mr = project.get_model_registry()
-    
     results = []
     
     for item in items:
         for loc in locations:
-            try:
-                # Get prediction for this item-location
-                prediction = predict(
-                    project_name=project_name,
-                    model_name=model_name,
-                    item_id=item,
-                    location_id=loc,
-                    time_bucket=time_period
-                )
-                
-                if prediction:
-                    results.append(prediction)
-                    
-            except Exception:
-                pass
+            prediction = predict(
+                project_name=project_name,
+                model_name=model_name,
+                item_id=item,
+                location_id=loc,
+                time_bucket=time_period
+            )
+            
+            if prediction:
+                results.append(prediction)
     
     return pd.DataFrame(results)
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Simplified Inference Pipeline')
+    parser = argparse.ArgumentParser(description='Inference Pipeline')
     parser.add_argument('--project', type=str, help='Hopsworks project name')
     parser.add_argument('--model-name', type=str, default='demand_forecaster',
                       help='Base name for the models')

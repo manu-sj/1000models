@@ -17,22 +17,12 @@ load_dotenv()
 import warnings
 warnings.filterwarnings('ignore')
 
-def connect_to_hopsworks(project_name='models1000'):
-    """Connect to Hopsworks project"""
-    project = hopsworks.login(
-        host=os.getenv("HOST"),
-        port=os.getenv("PORT"),
-        api_key_value=os.getenv("HOPSWORKS_API_KEY"),
-        project=project_name or os.getenv("PROJECT")
-    )
-    return project
-
 def get_feature_view(fs, feature_group_name, version):
     """Create feature view for training"""
     # Get feature group
     demand_fg = fs.get_feature_group(
         name=feature_group_name,
-        version=version,
+        version=version
     )
     
     # Define query with all features
@@ -140,7 +130,7 @@ def save_model(item, loc, model_result, feature_view, model_registry, model_name
     model_api = model_registry.python.create_model(
         name=model_prefix,
         metrics=metrics,
-        description=f"Demand forecasting model for item {item}, location {loc} using {model_type}",
+        description=f"Demand forecaster for item {item}, location {loc}",
         input_example=train_example,
         feature_view=feature_view
     )
@@ -157,23 +147,27 @@ def save_model(item, loc, model_result, feature_view, model_registry, model_name
 def main(project_name='models1000', feature_group_name='demand_features', version=1,
          model_name='demand_forecaster', test_size=0.2, location_id=None):
     """Main training function"""
-    print("Connecting to Hopsworks")
-    project = connect_to_hopsworks(project_name)
+    # Connect to Hopsworks
+    project = hopsworks.login(
+        host=os.getenv("HOST"),
+        port=os.getenv("PORT"),
+        api_key_value=os.getenv("HOPSWORKS_API_KEY"),
+        project=project_name or os.getenv("PROJECT")
+    )
     fs = project.get_feature_store()
     mr = project.get_model_registry()
     
-    print("Creating feature view")
+    # Create feature view
     feature_view, query = get_feature_view(fs, feature_group_name, version)
     
     # Get unique items and locations
     items = query.read(limit=1000)['sp_id'].unique()
     locations = query.read(limit=1000)['loc_id'].unique() if location_id is None else [location_id]
     
-    # Calculate total models
+    # Track metrics and progress
     total_models = len(items) * len(locations)
     print(f"Training {total_models} models (items: {len(items)} × locations: {len(locations)})")
     
-    # Track metrics
     all_model_metrics = {}
     model_counter = 0
     
@@ -182,29 +176,25 @@ def main(project_name='models1000', feature_group_name='demand_features', versio
         for loc in locations:
             model_counter += 1
             
-            # Display progress
+            # Display progress occasionally
             if model_counter % 5 == 0 or model_counter == 1:
                 print(f"Training model {model_counter}/{total_models} (Item: {item}, Location: {loc})")
             
-            try:
-                # Train model
-                model_result = train_model(item, loc, feature_view, test_size)
+            # Train model
+            model_result = train_model(item, loc, feature_view, test_size)
+            
+            if model_result:
+                # Save model
+                metrics = save_model(item, loc, model_result, feature_view, mr, model_name)
                 
-                if model_result:
-                    # Save model
-                    metrics = save_model(item, loc, model_result, feature_view, mr, model_name)
-                    
-                    # Store metrics
-                    all_model_metrics[f"item_{item}_loc_{loc}"] = {
-                        "model_type": model_result["model_type"],
-                        "metrics": metrics
-                    }
-                    
-                    if model_counter % 5 == 0 or model_counter == 1:
-                        print(f"  Saved model: {model_result['model_type']}, RMSE: {metrics['rmse']:.2f}")
+                # Store metrics
+                all_model_metrics[f"item_{item}_loc_{loc}"] = {
+                    "model_type": model_result["model_type"],
+                    "metrics": metrics
+                }
                 
-            except Exception:
-                continue
+                if model_counter % 5 == 0 or model_counter == 1:
+                    print(f"  Model: {model_result['model_type']}, RMSE: {metrics['rmse']:.2f}")
     
     # Save metrics summary
     if all_model_metrics:
